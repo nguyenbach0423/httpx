@@ -29,8 +29,8 @@ func New(opts ...func(server *Server)) *Server {
 
 func WithHealthCheck() func(*Server) {
 	return func(s *Server) {
-		s.Get("/health/live", func(c *Context) error {
-			return c.JSON(http.StatusOK, map[string]string{
+		s.Get("/health/live", func(c *Context) {
+			c.JSON(http.StatusOK, map[string]string{
 				"msg": "ok",
 			})
 		})
@@ -88,14 +88,24 @@ func (s *Server) Group(prefix string, mw ...MiddlewareFunc) *Group {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c := &Context{Request: r, Response: &Response{writer: w}}
+	c := &Context{Request: r, Response: &Response{Header: make(map[string]string)}}
 
 	h := s.findHandler(c)
 
 	if h != nil {
-		if err := applyMiddleware(h, s.middlewares...)(c); err != nil {
-			c.Response.writer.WriteHeader(http.StatusInternalServerError)
-		}
+		applyMiddleware(h, s.middlewares...)(c)
+	}
+
+	for k, v := range c.Response.Header {
+		w.Header().Set(k, v)
+	}
+
+	if c.Response.Status > 0 {
+		w.WriteHeader(c.Response.Status)
+	}
+
+	if len(c.Response.Body) > 0 {
+		_, _ = w.Write(c.Response.Body)
 	}
 }
 
@@ -132,7 +142,7 @@ func (s *Server) findHandler(c *Context) HandlerFunc {
 
 		if route.method == c.Request.Method {
 			for key, value := range pathParams {
-				c.pathValues[key] = value
+				c.PathValues[key] = value
 			}
 			return route.handler
 		}
@@ -141,11 +151,11 @@ func (s *Server) findHandler(c *Context) HandlerFunc {
 	}
 
 	if !methodMatched {
-		c.Response.writer.WriteHeader(http.StatusMethodNotAllowed)
+		c.Abort(http.StatusMethodNotAllowed)
 		return nil
 	}
 
-	c.Response.writer.WriteHeader(http.StatusNotFound)
+	c.Abort(http.StatusNotFound)
 	return nil
 }
 
@@ -184,46 +194,54 @@ func (g *Group) Group(prefix string, mw ...MiddlewareFunc) *Group {
 }
 
 type Context struct {
-	Request  *http.Request
-	Response *Response
-
-	pathValues map[string]string
-
-	params map[string]any
+	Request    *http.Request
+	Response   *Response
+	Error      error
+	PathValues map[string]string
+	Params     map[string]any
 }
 
 type Response struct {
-	writer http.ResponseWriter
+	Status int
+	Header map[string]string
+	Body   []byte
 }
 
-func (c *Context) Param(key string) any {
-	return c.params[key]
+func (c *Context) Abort(status int) {
+	c.Response.Status = status
 }
 
-func (c *Context) SetParam(key string, value any) {
-	c.params[key] = value
+func (c *Context) AbortWithError(status int, err error) {
+	c.Response.Status = status
+	c.Error = err
 }
 
-func (c *Context) PathValue(key string) string {
-	return c.pathValues[key]
+func (c *Context) JSON(status int, v any) {
+	body, marshalErr := json.Marshal(v)
+	if marshalErr != nil {
+		c.AbortWithError(http.StatusInternalServerError, marshalErr)
+		return
+	}
+
+	c.Response.Status = status
+	c.Response.Header["Content-Type"] = "application/json"
+	c.Response.Body = body
 }
 
-func (c *Context) QueryParam(key string) string {
-	return c.Request.URL.Query().Get(key)
+func (c *Context) JSONWithError(status int, v any, err error) {
+	body, marshalErr := json.Marshal(v)
+	if marshalErr != nil {
+		c.AbortWithError(http.StatusInternalServerError, marshalErr)
+		return
+	}
+
+	c.Response.Status = status
+	c.Response.Header["Content-Type"] = "application/json"
+	c.Response.Body = body
+	c.Error = err
 }
 
-func (c *Context) RequestBody(v any) error {
-	return json.NewDecoder(c.Request.Body).Decode(v)
-}
-
-func (c *Context) JSON(status int, v any) error {
-	w := c.Response.writer
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	return json.NewEncoder(w).Encode(v)
-}
-
-type HandlerFunc func(*Context) error
+type HandlerFunc func(*Context)
 
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 

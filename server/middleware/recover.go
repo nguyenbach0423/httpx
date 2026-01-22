@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -10,25 +9,27 @@ import (
 
 func Recover() server.MiddlewareFunc {
 	return func(next server.HandlerFunc) server.HandlerFunc {
-		return func(c *server.Context) (err error) {
+		return func(c *server.Context) {
 			defer func() {
 				if r := recover(); r != nil {
 					if r == http.ErrAbortHandler {
 						panic(r)
 					}
 
-					switch e := r.(type) {
+					var err error
+
+					switch v := r.(type) {
 					case error:
-						err = e
-					case string:
-						err = errors.New(e)
+						err = v
 					default:
-						err = errors.New(fmt.Sprint(e))
+						err = fmt.Errorf("%v", v)
 					}
+
+					c.AbortWithError(http.StatusInternalServerError, err)
 				}
 			}()
 
-			return next(c)
+			next(c)
 		}
 	}
 }

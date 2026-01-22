@@ -4,20 +4,20 @@ import "github.com/nguyenbach0423/httpx/server"
 
 func WithParam(k string, v any) server.MiddlewareFunc {
 	return func(next server.HandlerFunc) server.HandlerFunc {
-		return func(c *server.Context) error {
-			c.SetParam(k, v)
-			return next(c)
+		return func(c *server.Context) {
+			c.Params[k] = v
+			next(c)
 		}
 	}
 }
 
 func WithParams(params map[string]any) server.MiddlewareFunc {
 	return func(next server.HandlerFunc) server.HandlerFunc {
-		return func(c *server.Context) error {
+		return func(c *server.Context) {
 			for k, v := range params {
-				c.SetParam(k, v)
+				c.Params[k] = v
 			}
-			return next(c)
+			next(c)
 		}
 	}
 }
