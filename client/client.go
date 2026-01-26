@@ -13,38 +13,15 @@ import (
 )
 
 type Client struct {
-	httpclient  *http.Client
-	retryConfig *RetryConfig
-}
-
-func New(opts ...func(*Client)) *Client {
-	c := &Client{
-		httpclient: &http.Client{},
-	}
-
-	for _, opt := range opts {
-		opt(c)
-	}
-
-	return c
-}
-
-func WithTimeout(timeout time.Duration) func(*Client) {
-	return func(c *Client) {
-		c.httpclient.Timeout = timeout
-	}
+	HTTPClient  *http.Client
+	RetryConfig *RetryConfig
+	Headers     map[string]string
 }
 
 type RetryConfig struct {
 	MaxRetries int
 	Backoff    time.Duration
 	MaxBackoff time.Duration
-}
-
-func WithRetryConfig(retryConfig *RetryConfig) func(*Client) {
-	return func(c *Client) {
-		c.retryConfig = retryConfig
-	}
 }
 
 func (c *Client) Do(req *request.Request) (*response.Response, error) {
@@ -56,10 +33,10 @@ func (c *Client) Do(req *request.Request) (*response.Response, error) {
 	var backoff time.Duration
 	var maxBackoff time.Duration
 
-	if c.retryConfig != nil {
-		maxRetries = c.retryConfig.MaxRetries
-		backoff = c.retryConfig.Backoff
-		maxBackoff = c.retryConfig.MaxBackoff
+	if c.RetryConfig != nil {
+		maxRetries = c.RetryConfig.MaxRetries
+		backoff = c.RetryConfig.Backoff
+		maxBackoff = c.RetryConfig.MaxBackoff
 	}
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -76,12 +53,16 @@ func (c *Client) Do(req *request.Request) (*response.Response, error) {
 			return nil, err
 		}
 
+		for k, v := range c.Headers {
+			httpReq.Header.Set(k, v)
+		}
+
 		for k, v := range req.Headers {
 			httpReq.Header.Set(k, v)
 		}
 
 		var httpResp *http.Response
-		httpResp, err = c.httpclient.Do(httpReq)
+		httpResp, err = c.HTTPClient.Do(httpReq)
 		if err != nil {
 			return nil, err
 		}
