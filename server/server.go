@@ -88,7 +88,12 @@ func (s *Server) Group(prefix string, mw ...MiddlewareFunc) *Group {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c := &Context{Request: r, Response: &Response{Header: make(map[string]string)}}
+	c := &Context{
+		Request:    r,
+		Response:   &Response{Header: make(map[string]string)},
+		PathValues: make(map[string]string),
+		Params:     make(map[string]any),
+	}
 
 	h := s.findHandler(c)
 
