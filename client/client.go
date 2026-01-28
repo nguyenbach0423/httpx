@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"math/rand"
 	"net/http"
@@ -98,6 +99,10 @@ func (c *Client) Do(req *request.Request) (*response.Response, error) {
 			}
 			continue
 		}
+	}
+
+	if resp == nil {
+		return nil, errors.New("no response")
 	}
 
 	return resp, nil
